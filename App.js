@@ -1,168 +1,304 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ScrollView, Modal, TextInput, FlatList } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-
+Intl.NumberFormatimport React, { useState, useEffect } from 'react';
+import {
+StyleSheet,
+Text,
+View,
+TouchableOpacity,
+SafeAreaView,
+ScrollView,
+TextInput,
+ActivityIndicator,
+Alert
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+const STORAGE_KEY = '@bank_app_state_v1';
 export default function App() {
-  const [balance, setBalance] = useState(1100.00);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [recipient, setRecipient] = useState('');
-  const [iban, setIban] = useState('');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [history, setHistory] = useState([]);
-  const [pdfUri, setPdfUri] = useState(null);
-
-  const handleSend = () => {
-    if (recipient && iban && amount) {
-      const parsedAmount = parseFloat(amount);
-      if (balance >= parsedAmount) {
-        setBalance(balance - parsedAmount);
-        const newTransaction = { id: Date.now().toString(), recipient, iban, amount: parsedAmount, note, date: new Date().toLocaleString() };
-        setHistory([newTransaction, ...history]);
-        setRecipient(''); setIban(''); setAmount(''); setNote(''); setModalVisible(false);
-      } else {
-        alert('Nedostatok financií na účte!');
-      }
-    } else {
-      alert('Vyplňte povinné polia (Príjemca, IBAN, Suma)');
-    }
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Ahoj,</Text>
-            <Text style={styles.userName}>Tomáš Lizák</Text>
-          </View>
-          <TouchableOpacity style={styles.settingsButton}>
-            <Ionicons name="settings-outline" size={24} color="#FFF" />
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.balanceCard}>
-          <Text style={styles.balanceTitle}>Zostatok na účte</Text>
-          <Text style={styles.balanceAmount}>{balance.toFixed(2)} €</Text>
-        </TouchableOpacity>
-
-        <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.actionButton} onPress={() => setModalVisible(true)}>
-            <View style={[styles.iconContainer, { backgroundColor: '#00E676' }]}>
-              <Ionicons name="arrow-up-outline" size={24} color="#000" />
-            </View>
-            <Text style={styles.actionText}>Poslať peniaze</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>História platieb</Text>
-        </View>
-        <List items={history} />
-      </ScrollView>
-
-      <Modal animationType="slide" transparent={true} visible={modalVisible}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nová platba</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close-outline" size={28} color="#FFF" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView>
-              <Input label="Príjemca" value={recipient} onChange={setRecipient} placeholder="Zadajte meno alebo názov" />
-              <Input label="IBAN" value={iban} onChange={setIban} placeholder="SK00 0000 0000 0000 0000 0000" />
-              <Input label="Suma" value={amount} onChange={setAmount} placeholder="0,00 €" keyboardType="numeric" />
-              <Input label="Poznámka" value={note} onChange={setNote} placeholder="Poznámka pre príjemcu (voliteľné)" />
-              <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-                <Text style={styles.sendButtonText}>Odoslať platbu</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
-  );
+const [loading, setLoading] = useState(true);
+const [balance, setBalance] = useState(1250.50);
+const [transactions, setTransactions] = useState([
+{ id: '1', title: 'Nákup potraviny', amount: -24.50, date: '12.09.2026' },
+{ id: '2', title: 'Výplata', amount: 1500.00, date: '10.09.2026' },
+]);
+const [amountInput, setAmountInput] = useState('');
+const [titleInput, setTitleInput] = useState('');
+// 1. Načítanie uloženého stavu pri spustení aplikácie
+useEffect(() => {
+loadSavedState();
+}, []);
+// 2. Automatické uloženie stavu pri každej zmene zostatku alebo transakcií
+useEffect(() => {
+if (!loading) {
+saveCurrentState();
 }
-
-function Input({ label, value, onChange, placeholder, keyboardType }) {
-  return (
-    <View style={styles.inputContainer}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor="#B0B0B0"
-        keyboardType={keyboardType || 'default'}
-      />
-    </View>
-  );
+}, [balance, transactions]);
+const loadSavedState = async () => {
+try {
+const savedData = await AsyncStorage.getItem(STORAGE_KEY);
+if (savedData !== null) {
+const parsed = JSON.parse(savedData);
+if (parsed.balance !== undefined) setBalance(parsed.balance);
+if (parsed.transactions) setTransactions(parsed.transactions);
 }
-
-function List({ items }) {
-  if (items.length === 0) {
-    return (
-      <View style={styles.emptyList}>
-        <Text style={styles.emptyListText}>Žiadne transakcie</Text>
-      </View>
-    );
-  }
-  return (
-    <FlatList
-      data={items}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <View style={styles.transactionCard}>
-          <View style={styles.transactionIcon}>
-            <Ionicons name="checkmark-circle-outline" size={24} color="#00E676" />
-          </View>
-          <View style={styles.transactionDetails}>
-            <Text style={styles.recipientName}>{item.recipient}</Text>
-            <Text style={styles.transactionDate}>{item.date}</Text>
-          </View>
-          <Text style={styles.transactionAmount}>-{item.amount.toFixed(2)} €</Text>
-        </View>
-      )}
-    />
-  );
+} catch (error) {
+console.error('Chyba pri načítavaní dát:', error);
+} finally {
+setLoading(false);
 }
-
+};
+const saveCurrentState = async () => {
+try {
+const dataToSave = {
+balance,
+transactions,
+};
+await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+} catch (error) {
+console.error('Chyba pri ukladaní dát:', error);
+}
+};
+const handleAddTransaction = (isIncome) => {
+const numericAmount = parseFloat(amountInput.replace(',', '.'));
+if (isNaN(numericAmount) || numericAmount <= 0) {
+Alert.alert('Chyba', 'Zadajte platnú sumu.');
+return;
+}
+if (!titleInput.trim()) {
+Alert.alert('Chyba', 'Zadajte názov transakcie.');
+return;
+}
+const finalAmount = isIncome ? numericAmount : -numericAmount;
+const newTx = {
+id: Date.now().toString(),
+title: titleInput.trim(),
+amount: finalAmount,
+date: new Date().toLocaleDateString('sk-SK'),
+};
+setBalance((prev) => prev + finalAmount);
+setTransactions((prev) => [newTx, ...prev]);
+setAmountInput('');
+setTitleInput('');
+};
+const handleResetData = async () => {
+try {
+await AsyncStorage.removeItem(STORAGE_KEY);
+setBalance(1250.50);
+setTransactions([]);
+Alert.alert('Obnovené', 'Údaje boli vymazané a nastavené na predvolené.');
+} catch (error) {
+console.error('Chyba pri mazaní:', error);
+}
+};
+if (loading) {
+return (
+<View style={styles.loadingContainer}>
+<ActivityIndicator size="large" color="#005AA7" />
+<Text style={styles.loadingText}>Načítavam bankové dáta...</Text>
+</View>
+);
+}
+return (
+<SafeAreaView style={styles.container}>
+<ScrollView contentContainerStyle={styles.scrollContent}>
+<View style={styles.header}>
+<Text style={styles.headerTitle}>Banková Aplikácia</Text>
+<Text style={styles.subTitle}>Moje konto</Text>
+</View>
+{/* Karta so zostatkom */}
+<View style={styles.balanceCard}>
+<Text style={styles.balanceLabel}>Aktuálny zostatok</Text>
+<Text style={styles.balanceValue}>{balance.toFixed(2)} €</Text>
+</View>
+{/* Formulár na novú transakciu */}
+<View style={styles.formCard}>
+<Text style={styles.sectionTitle}>Nová transakcia</Text>
+<TextInput
+style={styles.input}
+placeholder="Názov (popis)"
+value={titleInput}
+onChangeText={setTitleInput}
+/>
+<TextInput
+style={styles.input}
+placeholder="Suma v €"
+keyboardType="numeric"
+value={amountInput}
+onChangeText={setAmountInput}
+/>
+<View style={styles.buttonRow}>
+<TouchableOpacity
+style={[styles.button, styles.expenseBtn]}
+onPress={() => handleAddTransaction(false)}
+>
+<Text style={styles.buttonText}>- Výdavok</Text>
+</TouchableOpacity>
+<TouchableOpacity
+style={[styles.button, styles.incomeBtn]}
+onPress={() => handleAddTransaction(true)}
+>
+<Text style={styles.buttonText}>+ Príjem</Text>
+</TouchableOpacity>
+</View>
+</View>
+{/* Zoznam transakcií */}
+<View style={styles.historyCard}>
+<Text style={styles.sectionTitle}>História transakcií</Text>
+{transactions.length === 0 ? (
+<Text style={styles.emptyText}>Žiadne transakcie</Text>
+) : (
+transactions.map((tx) => (
+<View key={tx.id} style={styles.txRow}>
+<View>
+<Text style={styles.txTitle}>{tx.title}</Text>
+<Text style={styles.txDate}>{tx.date}</Text>
+</View>
+<Text
+style={[
+styles.txAmount,
+tx.amount < 0 ? styles.negative : styles.positive,
+]}
+>
+{tx.amount > 0 ? +${tx.amount.toFixed(2)} : tx.amount.toFixed(2)} €
+</Text>
+</View>
+))
+)}
+</View>
+<TouchableOpacity style={styles.resetButton} onPress={handleResetData}>
+<Text style={styles.resetText}>Resetovať uložene dáta</Text>
+</TouchableOpacity>
+</ScrollView>
+</SafeAreaView>
+);
+}
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
-  greeting: { color: '#B0B0B0', fontSize: 14 },
-  userName: { color: '#FFF', fontSize: 24, fontWeight: 'bold' },
-  settingsButton: { padding: 8, backgroundColor: '#1E1E1E', borderRadius: 8 },
-  balanceCard: { backgroundColor: '#1E1E1E', padding: 24, borderRadius: 16, marginHorizontal: 20, alignItems: 'center', marginBottom: 20 },
-  balanceTitle: { color: '#B0B0B0', fontSize: 16 },
-  balanceAmount: { color: '#FFF', fontSize: 40, fontWeight: 'bold', marginTop: 8 },
-  actionButtons: { flexDirection: 'row', justifyContent: 'space-around', marginHorizontal: 20, marginBottom: 20 },
-  actionButton: { alignItems: 'center' },
-  iconContainer: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  actionText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 20, marginBottom: 10 },
-  sectionTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  modalContainer: { backgroundColor: '#1E1E1E', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '90%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { color: '#FFF', fontSize: 24, fontWeight: 'bold' },
-  inputContainer: { marginBottom: 15 },
-  inputLabel: { color: '#B0B0B0', fontSize: 14, marginBottom: 6 },
-  input: { backgroundColor: '#121212', color: '#FFF', padding: 14, borderRadius: 12, fontSize: 16, borderWidth: 1, borderColor: '#2C2C2C' },
-  sendButton: { backgroundColor: '#007AFF', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 15 },
-  sendButtonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  transactionCard: { backgroundColor: '#1E1E1E', flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, marginHorizontal: 20, marginBottom: 12 },
-  transactionIcon: { marginRight: 15 },
-  transactionDetails: { flex: 1 },
-  recipientName: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
-  transactionDate: { color: '#B0B0B0', fontSize: 12, marginTop: 2 },
-  transactionAmount: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
-  emptyList: { alignItems: 'center', padding: 40 },
-  emptyListText: { color: '#B0B0B0', fontSize: 16 },
+container: {
+flex: 1,
+backgroundColor: '#F3F4F6',
+},
+loadingContainer: {
+flex: 1,
+justifyContent: 'center',
+alignItems: 'center',
+},
+loadingText: {
+marginTop: 12,
+color: '#4B5563',
+},
+scrollContent: {
+padding: 16,
+},
+header: {
+marginBottom: 16,
+},
+headerTitle: {
+fontSize: 24,
+fontWeight: 'bold',
+color: '#1E3A8A',
+},
+subTitle: {
+fontSize: 14,
+color: '#6B7280',
+},
+balanceCard: {
+backgroundColor: '#005AA7',
+padding: 20,
+borderRadius: 16,
+marginBottom: 16,
+},
+balanceLabel: {
+color: '#E0F2FE',
+fontSize: 14,
+},
+balanceValue: {
+color: '#FFFFFF',
+fontSize: 32,
+fontWeight: 'bold',
+marginTop: 4,
+},
+formCard: {
+backgroundColor: '#FFFFFF',
+padding: 16,
+borderRadius: 12,
+marginBottom: 16,
+},
+sectionTitle: {
+fontSize: 16,
+fontWeight: '600',
+marginBottom: 12,
+color: '#1F2937',
+},
+input: {
+borderWidth: 1,
+borderColor: '#D1D5DB',
+borderRadius: 8,
+padding: 10,
+marginBottom: 10,
+},
+buttonRow: {
+flexDirection: 'row',
+justifyContent: 'space-between',
+gap: 8,
+},
+button: {
+flex: 1,
+padding: 12,
+borderRadius: 8,
+alignItems: 'center',
+},
+incomeBtn: {
+backgroundColor: '#10B981',
+},
+expenseBtn: {
+backgroundColor: '#EF4444',
+},
+buttonText: {
+color: '#FFFFFF',
+fontWeight: '600',
+},
+historyCard: {
+backgroundColor: '#FFFFFF',
+padding: 16,
+borderRadius: 12,
+},
+emptyText: {
+color: '#9CA3AF',
+textAlign: 'center',
+marginVertical: 12,
+},
+txRow: {
+flexDirection: 'row',
+justifyContent: 'space-between',
+alignItems: 'center',
+paddingVertical: 10,
+borderBottomWidth: 1,
+borderBottomColor: '#F3F4F6',
+},
+txTitle: {
+fontSize: 14,
+fontWeight: '500',
+color: '#1F2937',
+},
+txDate: {
+fontSize: 12,
+color: '#9CA3AF',
+},
+txAmount: {
+fontSize: 15,
+fontWeight: '600',
+},
+positive: {
+color: '#10B981',
+},
+negative: {
+color: '#EF4444',
+},
+resetButton: {
+marginTop: 20,
+alignItems: 'center',
+},
+resetText: {
+color: '#6B7280',
+fontSize: 12,
+textDecorationLine: 'underline',
+},
 });
-    
